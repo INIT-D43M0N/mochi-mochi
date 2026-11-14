@@ -8,7 +8,7 @@ visual-style "liquid-glass" {
     corner-radius 14
     shadow-elevation 16
     window-gap 10
-    titlebar-height 30
+    titlebar-height 0
     refraction-strength 0.038
     noise-intensity 0.025
     specular-intensity 0.45

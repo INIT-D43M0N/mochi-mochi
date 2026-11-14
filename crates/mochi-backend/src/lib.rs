@@ -671,39 +671,6 @@ pub fn assemble_scene_elements(
         )));
     }
 
-    // ========================================================================
-    // 2. Interactive Edge-Snap Glass Preview Card (Shader-Driven)
-    // ========================================================================
-    if let Some(preview_rect) = state.wm.snap_preview {
-        let preview_node = BackdropEffectNode::from_window_rect(preview_rect, style_cfg, true, true);
-        if let Some(pyramid) = backdrop_pyramid {
-            elements.push(MochiSceneElement::TexShader(
-                shaders.window_backdrop_texture_element(
-                    renderer,
-                    pyramid.top_window_backdrop.clone(),
-                    scale,
-                    &preview_node,
-                    style_cfg,
-                    style_scalar,
-                    1.0,
-                    output_size,
-                    state.pointer_location,
-                    elapsed_secs,
-                ),
-            ));
-        } else {
-            elements.push(MochiSceneElement::Shader(shaders.window_material_element(
-                &preview_node,
-                style_cfg,
-                style_scalar,
-                1.0,
-                output_size,
-                state.pointer_location,
-                elapsed_secs,
-            )));
-        }
-    }
-
     let layer_map = layer_map_for_output(output);
     let (lower_layers, upper_layers): (Vec<&LayerSurface>, Vec<&LayerSurface>) = layer_map
         .layers()
@@ -874,26 +841,22 @@ pub fn assemble_scene_elements(
         ));
         let is_focused = !is_shoji_shell && focused_win.as_ref() == Some(window);
 
+        let surface_clip_size = if !is_shoji_shell {
+            win_geo.size
+        } else {
+            anim_rect.size
+        };
         let full_rect = if tb_h > 0 {
             Rectangle::new(
                 Point::from((loc.x, loc.y - tb_h)),
-                Size::from((anim_rect.size.w, anim_rect.size.h + tb_h)),
+                Size::from((surface_clip_size.w, surface_clip_size.h + tb_h)),
             )
         } else {
-            Rectangle::new(loc, anim_rect.size)
+            Rectangle::new(loc, surface_clip_size)
         };
 
-        // 4a. Focused window accent border frame (2px) around full composite window
-        if is_focused {
-            push_border_frame(
-                &mut elements,
-                full_rect,
-                2,
-                accent_color,
-                commit,
-                (&ids.focus_top, &ids.focus_bottom, &ids.focus_left, &ids.focus_right),
-            );
-        }
+        // 4a. Modern CSD/Liquid Glass windows rely on the Liquid Glass 3D rim & focus aura
+        // (no hard 2px tiling-WM border frame).
 
         // 4b. Server-side interactive translucent glass titlebar (with Close/Max/Tile buttons)
         if tb_h > 0 {
@@ -911,28 +874,23 @@ pub fn assemble_scene_elements(
             )));
         }
 
-        // 4c. Client window & popup surfaces with SDF Rounded Corner Clipping & inactive depth dimming
+        // 4c. Client window & popup surfaces with SDF Rounded Corner Clipping (100% opaque by default)
         let render_loc = (loc - win_geo.loc).to_physical_precise_round(scale);
         let client_origin_phys = loc.to_physical_precise_round(scale);
-        let depth_alpha = if is_focused || state.wm.overview_active {
-            1.0
-        } else {
-            0.93
-        };
         let window_elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
             AsRenderElements::<GlesRenderer>::render_elements(
                 window,
                 renderer,
                 render_loc,
                 scale,
-                (state.wm.effective_window_opacity(window) * win_alpha * depth_alpha).clamp(0.0, 1.0),
+                (state.wm.effective_window_opacity(window) * win_alpha).clamp(0.0, 1.0),
             );
         elements.extend(window_elems.into_iter().map(|elem| {
             MochiSceneElement::RoundedSurface(shaders.clip_client_surface(
                 elem,
                 client_origin_phys,
                 scale,
-                anim_rect.size,
+                surface_clip_size,
                 win_corner_r,
                 tb_h > 0,
             ))
@@ -957,6 +915,13 @@ pub fn assemble_scene_elements(
             }
         }
 
+        let is_opaque_app_window = !is_shoji_shell && glass_attrs.is_none();
+        let mut node_style = win_style.clone();
+        if is_opaque_app_window {
+            // Normal app windows are opaque (Mutter/GNOME/HarmonyOS): drop shadow only, no glass interior.
+            node_style.opacity = 1.0;
+        }
+
         let skip_blur =
             is_shoji_wallpaper || glass_attrs.as_ref().and_then(|a| a.blur_radius) == Some(0);
         if !skip_blur {
@@ -976,7 +941,7 @@ pub fn assemble_scene_elements(
                         fbo_tex,
                         scale,
                         &node,
-                        &win_style,
+                        &node_style,
                         win_scalar,
                         win_alpha,
                         output_size,
@@ -987,7 +952,7 @@ pub fn assemble_scene_elements(
             } else {
                 let material_elem = shaders.window_material_element(
                     &node,
-                    &win_style,
+                    &node_style,
                     win_scalar,
                     win_alpha,
                     output_size,
@@ -999,7 +964,38 @@ pub fn assemble_scene_elements(
         }
     }
 
-    // 4e. Minimizing windows playing spring flight to the bottom dock edge
+    // 4e. Interactive Edge-Snap Preview Card (rendered BEHIND workspace windows, like Mutter/GNOME)
+    if let Some(preview_rect) = state.wm.snap_preview {
+        let preview_node = BackdropEffectNode::from_window_rect(preview_rect, style_cfg, false, true);
+        if let Some(pyramid) = backdrop_pyramid {
+            elements.push(MochiSceneElement::TexShader(
+                shaders.window_backdrop_texture_element(
+                    renderer,
+                    pyramid.top_window_backdrop.clone(),
+                    scale,
+                    &preview_node,
+                    style_cfg,
+                    style_scalar,
+                    1.0,
+                    output_size,
+                    state.pointer_location,
+                    elapsed_secs,
+                ),
+            ));
+        } else {
+            elements.push(MochiSceneElement::Shader(shaders.window_material_element(
+                &preview_node,
+                style_cfg,
+                style_scalar,
+                1.0,
+                output_size,
+                state.pointer_location,
+                elapsed_secs,
+            )));
+        }
+    }
+
+    // 4f. Minimizing windows playing spring flight to the bottom dock edge
     for (window, anim) in &state.wm.minimizing_windows {
         let win_geo = window.geometry();
         let anim_rect = anim.current_rect(win_geo.size);

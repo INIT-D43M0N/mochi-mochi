@@ -45,11 +45,19 @@ impl PointerGrab<MochiState> for PointerMoveSurfaceGrab {
         data.wm
             .move_window_immediate(&self.window, new_location.to_i32_round());
 
-        // Update live edge-snap preview zone when dragging near screen borders/corners
+        // Update live edge-snap preview zone + Liquid Glass bubble & shrink-to-icon springs
+        data.wm.snap_drag_window = Some((self.window.clone(), event.location));
         if let Some(usable_geo) = data.wm.usable_output_geometry() {
             let gap = data.wm.visual_style.window_gap;
-            data.wm.snap_preview = SnapZone::from_pointer_edge(event.location, usable_geo)
+            let next_preview = SnapZone::from_pointer_edge(event.location, usable_geo)
                 .map(|zone| zone.target_geometry(usable_geo, gap));
+            if let Some(rect) = next_preview {
+                data.wm.last_snap_preview = Some(rect);
+                data.wm.snap_preview_progress.set_target(1.0);
+            } else {
+                data.wm.snap_preview_progress.set_target(0.0);
+            }
+            data.wm.snap_preview = next_preview;
         }
     }
 
@@ -74,6 +82,9 @@ impl PointerGrab<MochiState> for PointerMoveSurfaceGrab {
         if !handle.current_pressed().contains(&self.start_data.button) {
             let release_loc = handle.current_location();
             data.wm.snap_preview = None;
+            data.wm.last_snap_preview = None;
+            data.wm.snap_drag_window = None;
+            data.wm.snap_preview_progress.snap_to(0.0);
 
             if let Some(usable_geo) = data.wm.usable_output_geometry() {
                 if let Some(zone) = SnapZone::from_pointer_edge(release_loc, usable_geo) {

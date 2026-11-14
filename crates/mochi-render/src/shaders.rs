@@ -524,31 +524,32 @@ void main() {
     float w1 = clamp(1.0 - abs(u_style - 1.0), 0.0, 1.0);
     float w2 = clamp(u_style - 1.0, 0.0, 1.0);
 
-    vec2 shadow_offset = vec2(0.0, max(u_shadow_elevation * 0.32, 3.0));
+    vec2 shadow_offset = vec2(0.0, max(u_shadow_elevation * 0.36, 4.0));
     float d_shadow = sdRoundedBox(p - shadow_offset, half_win, r);
     float sigma = max(u_shadow_elevation * 1.15, 6.0);
 
-    float penumbra = exp(-max(d_shadow, 0.0) / sigma) * 0.52;
-    float umbra = exp(-max(d, 0.0) / (sigma * 0.35)) * 0.28;
-    float shadow_alpha = clamp((penumbra + umbra) * (0.75 + 0.25 * u_focused), 0.0, 0.85);
+    float penumbra = exp(-max(d_shadow, 0.0) / sigma) * 0.46;
+    float umbra = exp(-max(d, 0.0) / (sigma * 0.35)) * 0.24;
+    float shadow_alpha = clamp((penumbra + umbra) * (0.65 + 0.35 * u_focused), 0.0, 0.78);
 
-    vec3 glow_col = vec3(0.02, 0.03, 0.05);
-    float aura = 0.0;
-    if (u_focused > 0.5) {
-        float aura_falloff = exp(-max(d, 0.0) / 5.5);
-        vec3 target_aura_col = w0 * vec3(0.42, 0.56, 0.88)
-                             + w1 * vec3(0.68, 0.80, 0.98)
-                             + w2 * vec3(0.32, 0.86, 1.00);
-        float aura_strength = w0 * 0.38 + w1 * 0.45 + w2 * 0.55;
-        glow_col = mix(glow_col, target_aura_col, aura_falloff * 0.65);
-        aura = aura_falloff * aura_strength;
-    }
-
-    float out_a = clamp(shadow_alpha + aura, 0.0, 0.92) * alpha;
-    vec4 shadow_rgba = vec4(glow_col * out_a, out_a);
+    float out_a = shadow_alpha * alpha;
+    vec4 shadow_rgba = vec4(0.0, 0.0, 0.0, out_a);
 
     if (d > 1.35) {
         gl_FragColor = shadow_rgba;
+        return;
+    }
+
+    if (u_opacity >= 0.995 && u_is_preview < 0.5) {
+        gl_FragColor = mix(shadow_rgba, vec4(0.0), 1.0 - smoothstep(-1.25, 1.25, d));
+        return;
+    }
+
+    if (u_is_preview > 0.5) {
+        float edge_aa_p = 1.0 - smoothstep(-0.75, 0.5, d);
+        float border_p = 1.0 - smoothstep(0.0, 1.5, -d);
+        float prev_a = mix(0.14, 0.36, border_p) * edge_aa_p * alpha;
+        gl_FragColor = mix(shadow_rgba, vec4(vec3(1.0) * prev_a, prev_a), edge_aa_p);
         return;
     }
 
@@ -688,28 +689,32 @@ void main() {
     float w2 = clamp(u_style - 1.0, 0.0, 1.0);
 
     if (d > 0.5) {
-        vec2 shadow_offset = vec2(0.0, max(u_shadow_elevation * 0.32, 3.0));
+        // Clean Mutter/GNOME/HarmonyOS elevation drop shadow (no neon focus aura)
+        vec2 shadow_offset = vec2(0.0, max(u_shadow_elevation * 0.36, 4.0));
         float d_shadow = sdRoundedBox(p - shadow_offset, half_win, r);
         float sigma = max(u_shadow_elevation * 1.15, 6.0);
 
-        float penumbra = exp(-max(d_shadow, 0.0) / sigma) * 0.52;
-        float umbra = exp(-max(d, 0.0) / (sigma * 0.35)) * 0.28;
-        float shadow_alpha = clamp((penumbra + umbra) * (0.75 + 0.25 * u_focused), 0.0, 0.85);
+        float penumbra = exp(-max(d_shadow, 0.0) / sigma) * 0.46;
+        float umbra = exp(-max(d, 0.0) / (sigma * 0.35)) * 0.24;
+        float shadow_alpha = clamp((penumbra + umbra) * (0.65 + 0.35 * u_focused), 0.0, 0.78);
 
-        vec3 glow_col = vec3(0.02, 0.03, 0.05);
-        float aura = 0.0;
-        if (u_focused > 0.5) {
-            float aura_falloff = exp(-max(d, 0.0) / 5.5);
-            vec3 target_aura_col = w0 * vec3(0.42, 0.56, 0.88)
-                                 + w1 * vec3(0.68, 0.80, 0.98)
-                                 + w2 * vec3(0.32, 0.86, 1.00);
-            float aura_strength = w0 * 0.38 + w1 * 0.45 + w2 * 0.55;
-            glow_col = mix(glow_col, target_aura_col, aura_falloff * 0.65);
-            aura = aura_falloff * aura_strength;
-        }
+        float out_a = shadow_alpha * alpha;
+        gl_FragColor = vec4(0.0, 0.0, 0.0, out_a);
+        return;
+    }
 
-        float out_a = clamp(shadow_alpha + aura, 0.0, 0.92) * alpha;
-        gl_FragColor = vec4(glow_col * out_a, out_a);
+    // Normal opaque application windows only use the drop shadow above; no glass interior.
+    if (u_opacity >= 0.995 && u_is_preview < 0.5) {
+        gl_FragColor = vec4(0.0);
+        return;
+    }
+
+    // Subtle Mutter/GNOME snap-zone preview overlay (clean neutral white, no cyan glow)
+    if (u_is_preview > 0.5) {
+        float edge_aa_p = 1.0 - smoothstep(-0.75, 0.5, d);
+        float border_p = 1.0 - smoothstep(0.0, 1.5, -d);
+        float prev_a = mix(0.14, 0.36, border_p) * edge_aa_p * alpha;
+        gl_FragColor = vec4(vec3(1.0) * prev_a, prev_a);
         return;
     }
 
@@ -721,24 +726,11 @@ void main() {
 
     vec2 dyn_light = normalize(vec2(-0.55, -0.83));
 
-    // 1. BLUR (0.0): pure blur only
-    vec3 rgb_normal = sample_blurred_backdrop(screen_uv, u_style, u_time, 0.65);
-
-    // 2. FROSTED GLASS (1.0): strong blur + saturate(1.5) + milky white 25% + grain + 1px white border, NO shine/distortion.
-    vec3 bg_frosted = sample_blurred_backdrop(screen_uv, u_style, u_time, 0.92);
-    float luma_f = dot(bg_frosted, vec3(0.299, 0.587, 0.114));
-    vec3 saturated_f = mix(vec3(luma_f), bg_frosted, 1.50);
-    vec3 rgb_frosted = mix(saturated_f, vec3(1.0, 1.0, 1.0), 0.25);
-    float frost_grain = (hash12(screen_px * 0.85) - 0.5) * 0.032;
-    rgb_frosted += vec3(frost_grain);
-    float border_1px = 1.0 - smoothstep(0.0, 1.15, -d);
-    rgb_frosted = mix(rgb_frosted, vec3(1.0), border_1px * 0.34);
-
-    // 3. LIQUID GLASS (2.0): clean curved-lens refraction + moving white specular + 3D glass rim.
+    // LIQUID GLASS: clean curved-lens refraction + moving white specular + 3D glass rim.
     float bevel_width = clamp(min(half_win.x, half_win.y) * 0.42, 18.0, 38.0);
     float bevel_factor = 1.0 - smoothstep(0.0, bevel_width, -d);
     float meniscus = pow(bevel_factor, 1.85);
-    vec2 refract_offset = n_xy * meniscus * 0.032 * (0.35 + 0.65 * w2);
+    vec2 refract_offset = n_xy * meniscus * 0.032;
     vec3 bg_r = sample_blurred_backdrop(screen_uv - refract_offset * 1.03, u_style, u_time, 0.22);
     vec3 bg_g = sample_blurred_backdrop(screen_uv - refract_offset * 1.00, u_style, u_time, 0.22);
     vec3 bg_b = sample_blurred_backdrop(screen_uv - refract_offset * 0.97, u_style, u_time, 0.22);
@@ -758,12 +750,11 @@ void main() {
     vec3 glass_edge_col = mix(vec3(0.82, 0.85, 0.90), vec3(1.0), clamp(moving_spec * 1.4 + opposite_spec, 0.0, 1.0));
     rgb_liquid = mix(rgb_liquid, glass_edge_col, border_outer * (0.52 + 0.42 * clamp(moving_spec + opposite_spec, 0.0, 1.0)));
 
-    vec3 glass_rgb = w0 * rgb_normal + w1 * rgb_frosted + w2 * rgb_liquid;
-    float preview_alpha = w0 * 0.42 + w1 * 0.50 + w2 * 0.56;
-    float eff_alpha = w0 * 0.80 + w1 * u_opacity + w2 * max(u_opacity, 0.86);
+    float preview_alpha = 0.56;
+    float eff_alpha = max(u_opacity, 0.86);
     float glass_alpha = mix(eff_alpha, preview_alpha, u_is_preview) * edge_aa;
 
-    gl_FragColor = vec4(glass_rgb * glass_alpha * alpha, glass_alpha * alpha);
+    gl_FragColor = vec4(rgb_liquid * glass_alpha * alpha, glass_alpha * alpha);
 }
 "#;
 

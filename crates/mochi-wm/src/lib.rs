@@ -406,8 +406,8 @@ impl SnapZone {
         pointer: Point<f64, Logical>,
         output_geo: Rectangle<i32, Logical>,
     ) -> Option<Self> {
-        let edge_threshold = 24.0;
-        let corner_threshold = 64.0;
+        let edge_threshold = 36.0;
+        let corner_threshold = 72.0;
 
         let px = pointer.x - output_geo.loc.x as f64;
         let py = pointer.y - output_geo.loc.y as f64;
@@ -476,7 +476,7 @@ impl Default for VisualStyleConfig {
             corner_radius: 14,
             shadow_elevation: 16,
             window_gap: 10,
-            titlebar_height: 30,
+            titlebar_height: 0,
             refraction_strength: 0.038,
             noise_intensity: 0.025,
             specular_intensity: 0.45,
@@ -628,6 +628,12 @@ pub struct WindowManager {
     pub scratchpad_visible: bool,
     /// Optional translucent snap preview rectangle shown during interactive window drag.
     pub snap_preview: Option<Rectangle<i32, Logical>>,
+    /// Last active snap preview rectangle (kept while collapsing back to 0.0).
+    pub last_snap_preview: Option<Rectangle<i32, Logical>>,
+    /// Spring progress (`0.0..=1.0`) for the Liquid Glass tiling bubble & simultaneous shrink-to-icon.
+    pub snap_preview_progress: Spring1D,
+    /// Currently dragged window and pointer location during interactive move/tiling.
+    pub snap_drag_window: Option<(Window, Point<f64, Logical>)>,
     /// Per-window physical spring animation states (`mochi-anim`).
     pub window_animations: HashMap<Window, WindowAnimationState>,
     /// Horizontal camera slide spring for workspace transitions.
@@ -680,6 +686,9 @@ impl WindowManager {
             scratchpad_window: None,
             scratchpad_visible: false,
             snap_preview: None,
+            last_snap_preview: None,
+            snap_preview_progress: Spring1D::new(0.0, SpringParams::style_morph()),
+            snap_drag_window: None,
             window_animations: HashMap::new(),
             workspace_slide_x: Spring1D::new(0.0, SpringParams::workspace_slide()),
             style_morph: Spring1D::new(initial_style_scalar, SpringParams::style_morph()),
@@ -689,11 +698,12 @@ impl WindowManager {
     }
 
     /// Returns the effective opacity for `window`, honoring any matching `window-rule` override.
+    /// Normal application windows default to 1.0 (opaque, like Mutter/GNOME/HarmonyOS).
     pub fn effective_window_opacity(&self, window: &Window) -> f32 {
         self.window_opacity_overrides
             .get(window)
             .copied()
-            .unwrap_or(self.visual_style.opacity)
+            .unwrap_or(1.0)
     }
 
     /// Evaluates `self.window_rules` once for a newly committed window with `app_id` / `title`.
@@ -1457,6 +1467,13 @@ impl WindowManager {
             any_animating = true;
         }
 
+        self.snap_preview_progress.advance(dt_secs);
+        if self.snap_preview_progress.is_animating() {
+            any_animating = true;
+        } else if self.snap_preview.is_none() && self.snap_preview_progress.current <= 0.01 {
+            self.last_snap_preview = None;
+        }
+
         self.minimizing_windows.retain_mut(|(_, anim)| {
             anim.advance(dt_secs);
             let keep = anim.alpha.current > 0.02 && anim.is_animating();
@@ -1654,10 +1671,17 @@ impl WindowManager {
                 } else {
                     state.states.unset(xdg_toplevel::State::Maximized);
                 }
-                state.states.set(xdg_toplevel::State::TiledLeft);
-                state.states.set(xdg_toplevel::State::TiledRight);
-                state.states.set(xdg_toplevel::State::TiledTop);
-                state.states.set(xdg_toplevel::State::TiledBottom);
+                if zone == SnapZone::CenterRestore {
+                    state.states.unset(xdg_toplevel::State::TiledLeft);
+                    state.states.unset(xdg_toplevel::State::TiledRight);
+                    state.states.unset(xdg_toplevel::State::TiledTop);
+                    state.states.unset(xdg_toplevel::State::TiledBottom);
+                } else {
+                    state.states.set(xdg_toplevel::State::TiledLeft);
+                    state.states.set(xdg_toplevel::State::TiledRight);
+                    state.states.set(xdg_toplevel::State::TiledTop);
+                    state.states.set(xdg_toplevel::State::TiledBottom);
+                }
                 state.size = Some(rect.size);
             });
             toplevel.send_pending_configure();

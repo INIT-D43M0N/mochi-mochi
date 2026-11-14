@@ -400,6 +400,50 @@ impl MochiState {
                             return;
                         }
 
+                        // Automatic compositor-side edge/corner resize on Left Mouse Button
+                        if !is_shoji_shell && !mod_down && button == BTN_LEFT {
+                            let win_size = window.geometry().size;
+                            let px = self.pointer_location.x - window_loc.x as f64;
+                            let py = self.pointer_location.y - window_loc.y as f64;
+                            let w = win_size.w as f64;
+                            let h = win_size.h as f64;
+                            let mut edges = ResizeEdge::empty();
+                            if px >= -8.0 && px <= 8.0 {
+                                edges |= ResizeEdge::LEFT;
+                            } else if px >= w - 8.0 && px <= w + 8.0 {
+                                edges |= ResizeEdge::RIGHT;
+                            }
+                            if py >= -8.0 && py <= 5.0 {
+                                edges |= ResizeEdge::TOP;
+                            } else if py >= h - 8.0 && py <= h + 8.0 {
+                                edges |= ResizeEdge::BOTTOM;
+                            }
+                            if !edges.is_empty() {
+                                let initial_rect = Rectangle::new(window_loc, win_size);
+                                if let Some(toplevel) = window.toplevel() {
+                                    toplevel.with_pending_state(|state| {
+                                        state.states.set(xdg_toplevel::State::Resizing);
+                                    });
+                                    toplevel.send_pending_configure();
+                                } else if let Some(x11) = window.x11_surface() {
+                                    let _ = x11.configure(Some(initial_rect));
+                                }
+                                let start_data = PointerGrabStartData {
+                                    focus: wl_surface.map(|s| (s, window_loc.to_f64())),
+                                    button,
+                                    location: self.pointer_location,
+                                };
+                                let grab = PointerResizeSurfaceGrab::start(
+                                    start_data,
+                                    window,
+                                    edges,
+                                    initial_rect,
+                                );
+                                pointer.set_grab(self, grab, serial, Focus::Clear);
+                                return;
+                            }
+                        }
+
                         // Mod + Left Mouse Button drags window directly from anywhere
                         if !is_shoji_shell && mod_down && button == BTN_LEFT {
                             let start_data = PointerGrabStartData {
