@@ -1,0 +1,22 @@
+[package]
+name = "mochi-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+smithay.workspace = true
+calloop.workspace = true
+tracing.workspace = true
+kdl.workspace = true
+anyhow.workspace = true
+bitflags.workspace = true
+libc.workspace = true
+wayland-server.workspace = true
+wayland-backend.workspace = true
+wayland-protocols.workspace = true
+wayland-protocols-wlr.workspace = true
+wayland-scanner.workspace = true
+mochi-wm.workspace = true
+mochi-ipc.workspace = true
+

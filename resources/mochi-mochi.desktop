@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Mochi Mochi
+Comment=Independent Wayland Compositor & Window Manager (Normal Blur, Frosted Glass & Liquid Glass)
+Exec=mochi-session
+TryExec=mochi-session
+Type=Application
+DesktopNames=MochiMochi
+Keywords=wayland;compositor;window-manager;

@@ -1,0 +1,10 @@
+[package]
+name = "mochi-wm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+smithay.workspace = true
+tracing.workspace = true
+mochi-anim.workspace = true

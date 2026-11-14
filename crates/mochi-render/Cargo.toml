@@ -1,0 +1,13 @@
+[package]
+name = "mochi-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+smithay.workspace = true
+mochi-wm.workspace = true
+mochi-scene.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+

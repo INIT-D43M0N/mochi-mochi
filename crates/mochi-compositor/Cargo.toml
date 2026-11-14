@@ -1,0 +1,20 @@
+[package]
+name = "mochi-compositor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mochi-compositor"
+path = "src/main.rs"
+
+[dependencies]
+smithay.workspace = true
+calloop.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+mochi-core.workspace = true
+mochi-wm.workspace = true
+mochi-backend.workspace = true
+

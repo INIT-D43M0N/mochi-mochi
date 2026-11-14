@@ -1,0 +1,106 @@
+// Mochi Mochi — Default Configuration (KDL)
+// License: GPL-3.0-or-later
+// Saving changes to this file automatically hot-reloads Mochi Mochi live!
+
+visual-style "liquid-glass" {
+    blur-radius 24
+    opacity 0.82
+    corner-radius 14
+    shadow-elevation 16
+    window-gap 10
+    titlebar-height 30
+    refraction-strength 0.038
+    noise-intensity 0.025
+    specular-intensity 0.45
+}
+
+workspaces {
+    count 4
+    default-layout "floating"
+    dynamic #true
+}
+
+night-light {
+    enabled #false
+    temperature 3800 // Kelvin (1000..10000; 6500 daylight, 3500-4000 warm candlelight)
+    schedule "20:00" "06:30" // automatic overnight schedule based on system time
+}
+
+input {
+    keyboard {
+        xkb-layout "br"
+        repeat-rate 25
+        repeat-delay 600
+    }
+    // Touchpad & Touchscreen features (built-in out-of-the-box):
+    // - 3-finger horizontal swipe: 1:1 physical workspace slide with spring snap
+    // - Pinch-in (<0.72) / Pinch-out (>1.35): toggles Expose / Window Overview grid (Mod+W)
+    // - Multi-touch (wl_touch): HUD pill taps, server-side titlebars, window focus & client multi-touch
+    // - Client gestures: zwp_pointer_gestures_v1 for Wayland client swipe, pinch & hold
+}
+
+output "mochi-winit-0" {
+    position x=0 y=0
+    scale 1.0
+}
+
+output "eDP-1" {
+    position x=0 y=0
+    scale 1.0
+}
+
+output "DP-1" {
+    position x=1920 y=0
+    scale 1.0
+}
+
+window-rule app-id="pavucontrol" {
+    floating #true
+    opacity 0.90
+}
+
+window-rule app-id="org.gnome.Calculator" {
+    floating #true
+}
+
+startup {
+    // Uncomment or add background daemons, panels, or apps to launch automatically:
+    // spawn "waybar"
+    // spawn "mako"
+}
+
+binds {
+    "Mod+Return" action="spawn-terminal"
+    "Mod+Q" action="close-window"
+    "Mod+Tab" action="cycle-focus"
+    "Mod+F" action="toggle-fullscreen"
+    "Mod+T" action="toggle-layout-tiling-floating"
+    "Mod+W" action="toggle-overview"
+    "Mod+Minus" action="toggle-scratchpad"
+    "Mod+Shift+Minus" action="move-to-scratchpad"
+    "Mod+P" action="screenshot"
+    "Mod+Shift+Return" action="swap-with-master"
+    "Mod+H" action="shrink-master"
+    "Mod+L" action="grow-master"
+    "Mod+[" action="decrease-master-ratio"
+    "Mod+]" action="increase-master-ratio"
+    "Mod+I" action="inc-master-count"
+    "Mod+D" action="dec-master-count"
+    "Mod+Shift+H" action="swap-left"
+    "Mod+Shift+L" action="swap-right"
+    "Mod+Shift+J" action="swap-down"
+    "Mod+Shift+K" action="swap-up"
+    "Mod+Shift+R" action="reload-config"
+    "Mod+Left" action="snap-left"
+    "Mod+Right" action="snap-right"
+    "Mod+Up" action="snap-maximize"
+    "Mod+Down" action="snap-center"
+    "Mod+1" action="workspace-1"
+    "Mod+2" action="workspace-2"
+    "Mod+3" action="workspace-3"
+    "Mod+4" action="workspace-4"
+    "Mod+Shift+1..4" action="move-window-to-workspace"
+    "Mod+S" action="cycle-visual-style"
+    "Mod+N" action="toggle-night-light"
+    "Mod+Escape" action="quit"
+}

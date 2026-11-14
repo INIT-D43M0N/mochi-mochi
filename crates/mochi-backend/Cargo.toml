@@ -1,0 +1,15 @@
+[package]
+name = "mochi-backend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+smithay.workspace = true
+calloop.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+mochi-core.workspace = true
+mochi-wm.workspace = true
+mochi-scene.workspace = true
+mochi-render.workspace = true

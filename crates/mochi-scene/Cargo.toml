@@ -1,0 +1,11 @@
+[package]
+name = "mochi-scene"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+smithay.workspace = true
+mochi-wm.workspace = true
+tracing.workspace = true
+

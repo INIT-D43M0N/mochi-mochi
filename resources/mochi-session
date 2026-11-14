@@ -1,0 +1,79 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# mochi-session — login-manager entry point for the Mochi Mochi Wayland compositor.
+#
+# Launched by GDM / SDDM / greetd through /usr/share/wayland-sessions/mochi-mochi.desktop.
+# Sets up the session environment, seeds the per-user KDL config on first login, and
+# execs `mochi-compositor --backend udev`. The compositor itself exports WAYLAND_DISPLAY
+# to systemd / D-Bus and starts `mochi-mochi-session.target` once its socket is ready.
+
+set -u
+
+BINDIR="@BINDIR@"
+DATADIR="@DATADIR@"
+
+# Fall back to PATH lookup when running the uninstalled script from a source checkout.
+case "$BINDIR" in @*) BINDIR="$(dirname "$(command -v mochi-compositor 2>/dev/null || echo /usr/local/bin/x)")" ;; esac
+case "$DATADIR" in @*) DATADIR="/usr/local/share" ;; esac
+
+# --- Session identity -------------------------------------------------------
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-MochiMochi}"
+export XDG_SESSION_DESKTOP="${XDG_SESSION_DESKTOP:-mochi-mochi}"
+
+# We are the display server: never inherit a parent display (e.g. greeter's).
+unset WAYLAND_DISPLAY DISPLAY
+
+# --- Toolkit hints (Wayland first, X11 fallback) ----------------------------
+export MOZ_ENABLE_WAYLAND=1
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
+export QT_WAYLAND_DISABLE_WINDOWDECORATION="${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"
+export GDK_BACKEND="${GDK_BACKEND:-wayland,x11}"
+export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland,x11}"
+export CLUTTER_BACKEND="${CLUTTER_BACKEND:-wayland}"
+export ELECTRON_OZONE_PLATFORM_HINT="${ELECTRON_OZONE_PLATFORM_HINT:-auto}"
+export _JAVA_AWT_WM_NONREPARENTING=1
+
+# --- Per-user configuration -------------------------------------------------
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+user_config="$config_home/mochi/mochi.kdl"
+
+# Seed ~/.config/mochi/mochi.kdl from the installed default on first login so it can be
+# edited and hot-reloaded live.
+if [ -z "${MOCHI_CONFIG:-}" ] && [ ! -e "$user_config" ]; then
+    for default in "$DATADIR/mochi-mochi/mochi.kdl" \
+                   /usr/local/share/mochi-mochi/mochi.kdl \
+                   /usr/share/mochi-mochi/mochi.kdl; do
+        if [ -f "$default" ]; then
+            mkdir -p "$(dirname "$user_config")" && cp "$default" "$user_config"
+            break
+        fi
+    done
+fi
+
+# Optional user overrides: KEY=value lines (e.g. XKB_DEFAULT_LAYOUT, RUST_LOG).
+if [ -f "$config_home/mochi/environment" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$config_home/mochi/environment"
+    set +a
+fi
+
+# --- Logging ----------------------------------------------------------------
+log_dir="${XDG_STATE_HOME:-$HOME/.local/state}/mochi"
+mkdir -p "$log_dir"
+log_file="$log_dir/mochi-compositor.log"
+[ -f "$log_file" ] && mv -f "$log_file" "$log_file.old"
+export RUST_LOG="${RUST_LOG:-info}"
+
+compositor="$BINDIR/mochi-compositor"
+[ -x "$compositor" ] || compositor="mochi-compositor"
+
+# --- Launch -----------------------------------------------------------------
+# Some greeters (e.g. bare greetd + agreety) do not provide a session D-Bus.
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-run-session >/dev/null 2>&1; then
+    exec dbus-run-session -- "$compositor" --backend udev "$@" >>"$log_file" 2>&1
+fi
+exec "$compositor" --backend udev "$@" >>"$log_file" 2>&1
+

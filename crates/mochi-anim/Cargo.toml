@@ -1,0 +1,9 @@
+[package]
+name = "mochi-anim"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+smithay.workspace = true
+

@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mochi-compositor",
+    "crates/mochi-core",
+    "crates/mochi-wm",
+    "crates/mochi-anim",
+    "crates/mochi-scene",
+    "crates/mochi-render",
+    "crates/mochi-backend",
+    "crates/mochi-ipc",
+]
+
+[workspace.package]
+version = "0.1.0-alpha"
+edition = "2021"
+license = "GPL-3.0-or-later"
+authors = ["Mochi Mochi Contributors"]
+repository = "https://github.com/mochi-mochi/mochi-mochi"
+
+[workspace.dependencies]
+smithay = { version = "0.7.0", default-features = false, features = [
+    "backend_winit",
+    "backend_egl",
+    "backend_drm",
+    "backend_gbm",
+    "backend_libinput",
+    "backend_udev",
+    "backend_session",
+    "renderer_gl",
+    "wayland_frontend",
+    "desktop",
+    "xwayland",
+] }
+calloop = { version = "0.14.0", features = ["executor"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+kdl = "6.3"
+anyhow = "1.0"
+bitflags = "2.6"
+libc = "0.2"
+wayland-server = "0.31"
+wayland-backend = "0.3"
+wayland-protocols = { version = "0.32", features = ["server", "staging"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["server"] }
+wayland-scanner = "0.31.11"
+
+mochi-core = { path = "crates/mochi-core" }
+mochi-wm = { path = "crates/mochi-wm" }
+mochi-anim = { path = "crates/mochi-anim" }
+mochi-scene = { path = "crates/mochi-scene" }
+mochi-render = { path = "crates/mochi-render" }
+mochi-backend = { path = "crates/mochi-backend" }
+mochi-ipc = { path = "crates/mochi-ipc" }

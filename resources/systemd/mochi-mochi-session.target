@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Started by mochi-compositor (udev backend) after it has exported WAYLAND_DISPLAY to
+# the systemd user manager; stopped when the compositor exits. Binding to
+# graphical-session.target lets user services (portals, notification daemons, panels,
+# idle managers) declare `PartOf=graphical-session.target` and follow the session.
+
+[Unit]
+Description=Mochi Mochi Wayland compositor session
+Documentation=man:systemd.special(7)
+BindsTo=graphical-session.target
+Wants=graphical-session-pre.target
+After=graphical-session-pre.target
+# Run ~/.config/autostart/*.desktop entries via systemd-xdg-autostart-generator
+Wants=xdg-desktop-autostart.target
+Before=xdg-desktop-autostart.target
+
