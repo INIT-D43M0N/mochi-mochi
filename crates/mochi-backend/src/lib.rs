@@ -28,6 +28,7 @@ use smithay::{
             element::{
                 solid::SolidColorRenderElement,
                 surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+                utils::RescaleRenderElement,
                 AsRenderElements, Id, Kind,
             },
             gles::{
@@ -51,6 +52,7 @@ render_elements! {
     pub MochiSceneElement<=GlesRenderer>;
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
     RoundedSurface=RoundedSurfaceRenderElement,
+    Rescaled=RescaleRenderElement<RoundedSurfaceRenderElement>,
     Shader=PixelShaderElement,
     TexShader=TextureShaderElement,
     Solid=SolidColorRenderElement,
@@ -875,6 +877,18 @@ pub fn assemble_scene_elements(
         }
 
         // 4c. Client window & popup surfaces with SDF Rounded Corner Clipping (100% opaque by default)
+        let snap_prog = state.wm.snap_preview_progress.current.clamp(0.0, 1.0) as f32;
+        let drag_shrink = if snap_prog > 0.01 {
+            state
+                .wm
+                .snap_drag_window
+                .as_ref()
+                .filter(|(dw, _)| dw == window)
+                .map(|(_, ptr)| *ptr)
+        } else {
+            None
+        };
+
         let render_loc = (loc - win_geo.loc).to_physical_precise_round(scale);
         let client_origin_phys = loc.to_physical_precise_round(scale);
         let window_elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
@@ -885,16 +899,45 @@ pub fn assemble_scene_elements(
                 scale,
                 (state.wm.effective_window_opacity(window) * win_alpha).clamp(0.0, 1.0),
             );
-        elements.extend(window_elems.into_iter().map(|elem| {
-            MochiSceneElement::RoundedSurface(shaders.clip_client_surface(
-                elem,
-                client_origin_phys,
-                scale,
-                surface_clip_size,
-                win_corner_r,
-                tb_h > 0,
-            ))
-        }));
+
+        if let Some(drag_ptr) = drag_shrink {
+            let drag_scale = (1.0 - 0.84 * snap_prog).max(0.14) as f64;
+            let scaled_w = (surface_clip_size.w as f64 * drag_scale).round();
+            let scaled_h = (surface_clip_size.h as f64 * drag_scale).round();
+            let target_x = drag_ptr.x - scaled_w * 0.5;
+            let target_y = drag_ptr.y - scaled_h * 0.5;
+            let cur_x = loc.x as f64 + (target_x - loc.x as f64) * snap_prog as f64;
+            let cur_y = loc.y as f64 + (target_y - loc.y as f64) * snap_prog as f64;
+            let icon_origin_phys: Point<i32, Physical> =
+                Point::<f64, Logical>::from((cur_x, cur_y)).to_physical_precise_round(scale);
+            let icon_corner_r = win_corner_r + (24.0 - win_corner_r) * snap_prog;
+            elements.extend(window_elems.into_iter().map(|elem| {
+                let rounded = shaders.clip_client_surface(
+                    elem,
+                    client_origin_phys,
+                    scale,
+                    surface_clip_size,
+                    icon_corner_r,
+                    tb_h > 0,
+                );
+                MochiSceneElement::Rescaled(RescaleRenderElement::from_element(
+                    rounded,
+                    icon_origin_phys,
+                    (drag_scale, drag_scale),
+                ))
+            }));
+        } else {
+            elements.extend(window_elems.into_iter().map(|elem| {
+                MochiSceneElement::RoundedSurface(shaders.clip_client_surface(
+                    elem,
+                    client_origin_phys,
+                    scale,
+                    surface_clip_size,
+                    win_corner_r,
+                    tb_h > 0,
+                ))
+            }));
+        }
 
         // 4d. Per-window BackdropEffectNode covering full_rect (titlebar + client surface):
         // Every translucent window in the stack (`idx == 0` topmost, `idx >= 1` lower windows)
@@ -964,34 +1007,58 @@ pub fn assemble_scene_elements(
         }
     }
 
-    // 4e. Interactive Edge-Snap Preview Card (rendered BEHIND workspace windows, like Mutter/GNOME)
-    if let Some(preview_rect) = state.wm.snap_preview {
-        let preview_node = BackdropEffectNode::from_window_rect(preview_rect, style_cfg, false, true);
-        if let Some(pyramid) = backdrop_pyramid {
-            elements.push(MochiSceneElement::TexShader(
-                shaders.window_backdrop_texture_element(
-                    renderer,
-                    pyramid.top_window_backdrop.clone(),
-                    scale,
+    // 4e. Interactive Edge-Snap Liquid Glass Bubble (expands simultaneously as dragged window shrinks to icon)
+    let snap_prog = state.wm.snap_preview_progress.current.clamp(0.0, 1.0) as f32;
+    if snap_prog > 0.01 {
+        if let Some(target_rect) = state.wm.snap_preview.or(state.wm.last_snap_preview) {
+            let ptr = state
+                .wm
+                .snap_drag_window
+                .as_ref()
+                .map(|(_, p)| *p)
+                .unwrap_or(state.pointer_location);
+            let seed_w = 64.0_f32;
+            let seed_h = 64.0_f32;
+            let cur_w = (seed_w + (target_rect.size.w as f32 - seed_w) * snap_prog).round() as i32;
+            let cur_h = (seed_h + (target_rect.size.h as f32 - seed_h) * snap_prog).round() as i32;
+            let seed_x = ptr.x as f32 - seed_w * 0.5;
+            let seed_y = ptr.y as f32 - seed_h * 0.5;
+            let cur_x = (seed_x + (target_rect.loc.x as f32 - seed_x) * snap_prog).round() as i32;
+            let cur_y = (seed_y + (target_rect.loc.y as f32 - seed_y) * snap_prog).round() as i32;
+            let anim_preview_rect = Rectangle::new(Point::from((cur_x, cur_y)), Size::from((cur_w, cur_h)));
+
+            let mut preview_node =
+                BackdropEffectNode::from_window_rect(anim_preview_rect, style_cfg, false, false);
+            preview_node.corner_radius = 24;
+            let mut glass_preview_style = style_cfg.clone();
+            glass_preview_style.opacity = 0.86;
+
+            if let Some(pyramid) = backdrop_pyramid {
+                elements.push(MochiSceneElement::TexShader(
+                    shaders.window_backdrop_texture_element(
+                        renderer,
+                        pyramid.top_window_backdrop.clone(),
+                        scale,
+                        &preview_node,
+                        &glass_preview_style,
+                        style_scalar,
+                        snap_prog,
+                        output_size,
+                        state.pointer_location,
+                        elapsed_secs,
+                    ),
+                ));
+            } else {
+                elements.push(MochiSceneElement::Shader(shaders.window_material_element(
                     &preview_node,
-                    style_cfg,
+                    &glass_preview_style,
                     style_scalar,
-                    1.0,
+                    snap_prog,
                     output_size,
                     state.pointer_location,
                     elapsed_secs,
-                ),
-            ));
-        } else {
-            elements.push(MochiSceneElement::Shader(shaders.window_material_element(
-                &preview_node,
-                style_cfg,
-                style_scalar,
-                1.0,
-                output_size,
-                state.pointer_location,
-                elapsed_secs,
-            )));
+                )));
+            }
         }
     }
 
